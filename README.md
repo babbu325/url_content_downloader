@@ -26,7 +26,8 @@ The system is designed as a **3-stage concurrent pipeline**:
 ###  Run the Application
 - go run cmd/main.go -input "csx file path"
 
-Output files will be saved to the project `urlContent/` directory as `.txt`.
+Output files will be saved to the project `urlContent/` directory as `.txt` file.
+Make sure `urlContent` dir exists. 
 
 ---
 

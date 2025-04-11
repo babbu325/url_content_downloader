@@ -1,7 +1,6 @@
 package app_pipeline
 
 import (
-	"flag"
 	"fmt"
 	"jrog_assignment/internal/downloader"
 	"jrog_assignment/internal/logger"
@@ -34,18 +33,14 @@ func GetPipeline() *Stages {
 
 }
 
-func (s *Stages) RunPipeline() {
+func (s *Stages) RunPipeline(filePath string) {
 
-	filePath := flag.String("input", "urls.csv", "Path to input CSV file")
-	flag.Parse()
-	fmt.Println("file path: %v", *filePath)
-
-	urlChan := make(chan model.DownloadJob, 100)
-	resultChan := make(chan model.DownloadResult, 100)
+	urlChan := make(chan model.DownloadJob, 1000)
+	resultChan := make(chan model.DownloadResult, 1000)
 	done := make(chan bool)
 	var wg sync.WaitGroup
 
-	s.startReader(*filePath, urlChan)
+	s.startReader(filePath, urlChan)
 	s.startDownloaders(urlChan, resultChan, &wg)
 	s.startResultCloser(&wg, resultChan)
 	s.startWriter(resultChan, done)
@@ -54,26 +49,33 @@ func (s *Stages) RunPipeline() {
 
 func (s *Stages) startReader(filePath string, out chan<- model.DownloadJob) {
 	go func() {
-
 		err := s.Reader.Read(filePath, out)
 		if err != nil {
 			fmt.Println("Failed to read CSV:", err)
 			close(out)
 			return
 		}
+
 		close(out)
 	}()
 }
 
 func (s *Stages) startDownloaders(in <-chan model.DownloadJob, out chan<- model.DownloadResult, wg *sync.WaitGroup) {
-	for i := 0; i < 50; i++ {
+	const maxGoroutines = 50
+	sem := make(chan struct{}, maxGoroutines)
+
+	for job := range in {
+		sem <- struct{}{}
 		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for job := range in {
-				out <- s.Downloader.Download(job) // optional: collect for stats
-			}
-		}()
+
+		go func(j model.DownloadJob) {
+			defer func() {
+				<-sem
+				wg.Done()
+			}()
+			result := s.Downloader.Download(j)
+			out <- result
+		}(job)
 	}
 }
 
